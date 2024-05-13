@@ -1,11 +1,5 @@
 import { Request, Response } from "express";
 
-type result = {
-  area: number;
-  unit: string;
-  bars?: { number: number; diameter: number; area: number };
-};
-
 export const square = async (req: Request, res: Response) => {
   try {
     const {
@@ -54,9 +48,11 @@ export const square = async (req: Request, res: Response) => {
 
     const barsArea = barsCount * (Math.PI * (d / 2) ** 2);
 
-    const result: result = { area: reinforcementArea, unit: "mm2" };
-
-    d && (result.bars = { number: barsCount, diameter: d, area: barsArea });
+    const result = {
+      area: reinforcementArea,
+      unit: "mm2",
+      ...(d && { bars: { number: barsCount, diameter: d, area: barsArea } }),
+    };
 
     return res
       .status(200)
@@ -156,9 +152,11 @@ export const flanged = async (req: Request, res: Response) => {
 
     const barsArea = barsCount * (Math.PI * (d / 2) ** 2);
 
-    const result: result = { area: reinforcementArea, unit: "mm2" };
-
-    d && (result.bars = { number: barsCount, diameter: d, area: barsArea });
+    const result = {
+      area: reinforcementArea,
+      unit: "mm2",
+      ...(d && { bars: { number: barsCount, diameter: d, area: barsArea } }),
+    };
 
     return res.status(200).json({ result }).end();
   } catch (error) {
