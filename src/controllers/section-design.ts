@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 export const square = async (req: Request, res: Response) => {
   try {
     const {
-      moment: m,
+      moment,
       width: b,
       height: h,
       concrete_cover,
@@ -14,21 +14,26 @@ export const square = async (req: Request, res: Response) => {
     } = req.body;
 
     // Check if required fields are present
-    if (!m || !b || !h || !fc || !fy) {
+    if (!moment || !b || !h || !fc || !fy) {
       return res.sendStatus(400);
     }
 
     const a = concrete_cover || 0.1 * h;
+    const m = moment * 10 ** 6;
 
     const depth = h - a;
 
     const areaCo = m / (0.9 * 0.85 * fc * b * depth ** 2);
+    if (areaCo > 0.5) {
+      return res.status(400).json({ error: "Invalid section" }).end();
+    }
 
     const alphaCo = 1 - (1 - 2 * areaCo) ** 0.5;
     const alphaMaxCo = 267.75 / (630 + fy);
 
     let gamaCo = 1 - 0.5 * alphaCo;
     let reinforcementArea = m / (0.9 * gamaCo * depth * fy);
+
     if (alphaCo > alphaMaxCo) {
       gamaCo = 1 - 0.5 * alphaMaxCo;
       const yMax = depth * alphaMaxCo;
@@ -39,6 +44,17 @@ export const square = async (req: Request, res: Response) => {
       const compReinforcementArea = mComp / (0.9 * fs * (depth - a));
       reinforcementArea =
         mMax / (0.9 * gamaCo * depth * fy) + (compReinforcementArea * fs) / fy;
+    }
+
+    const minReinforcementArea = (0.9 / fy) * b * depth;
+
+    reinforcementArea = Math.max(reinforcementArea, minReinforcementArea);
+
+    const maxReinforcementArea =
+      0.75 * (455 / (630 + fy)) * (fc / fy) * b * depth;
+
+    if (reinforcementArea > maxReinforcementArea) {
+      return res.status(400).json({ error: "Invalid section" }).end();
     }
 
     const barsCount = Math.max(
@@ -70,6 +86,8 @@ export const square = async (req: Request, res: Response) => {
                 reinforcementArea,
                 barsCount,
                 barsArea,
+                minReinforcementArea,
+                maxReinforcementArea,
               },
             }
           : {}),
@@ -84,7 +102,7 @@ export const square = async (req: Request, res: Response) => {
 export const squareUnits = async (req: Request, res: Response) => {
   try {
     const units = {
-      moment: "N.mm",
+      moment: "kN.m",
       width: "mm",
       height: "mm",
       concrete_cover: "mm (default: 10% of height)",
