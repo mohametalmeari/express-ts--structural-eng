@@ -1,15 +1,15 @@
 import { Router } from "express";
 
 import {
-  square,
-  squareUnits,
+  rectangular,
+  rectangularUnits,
   flanged,
   flangedUnits,
 } from "../controllers/section-design";
 
-export const squareSectionDesign = (router: Router) => {
-  router.post("/section-design/square", square);
-  router.get("/section-design/square", squareUnits);
+export const rectangularSectionDesign = (router: Router) => {
+  router.post("/section-design/rectangular", rectangular);
+  router.get("/section-design/rectangular", rectangularUnits);
 };
 
 export const flangedSectionDesign = (router: Router) => {

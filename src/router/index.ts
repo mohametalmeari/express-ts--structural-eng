@@ -1,11 +1,14 @@
 import { Router } from "express";
 
-import { squareSectionDesign, flangedSectionDesign } from "./section-design";
+import {
+  rectangularSectionDesign,
+  flangedSectionDesign,
+} from "./section-design";
 
 const router = Router();
 
 export default (): Router => {
-  squareSectionDesign(router);
+  rectangularSectionDesign(router);
   flangedSectionDesign(router);
   return router;
 };
