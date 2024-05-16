@@ -5,23 +5,27 @@ export const square = async (req: Request, res: Response) => {
     const {
       moment,
       width: b,
-      height: h,
+      height,
       concrete_cover,
       concrete_compressive_strength: fc,
       steel_yield_strength: fy,
-      reinforcement_bars_diameter: d,
+      reinforcement_bars_diameter: diameter,
       draft = false,
     } = req.body;
 
     // Check if required fields are present
-    if (!moment || !b || !h || !fc || !fy) {
+    if (!moment || !b || !height || !fc || !fy) {
       return res.sendStatus(400);
     }
 
-    const a = concrete_cover || 0.1 * h;
+    // Assume default value for concrete cover if not provided
+    const a = concrete_cover || 0.1 * height;
+
+    // Convert moment to N.mm
     const m = moment * 10 ** 6;
 
-    const depth = h - a;
+    // Calculate depth of reinforcement bars from top
+    const depth = height - a;
 
     const areaCo = m / (0.9 * 0.85 * fc * b * depth ** 2);
     if (areaCo > 0.5) {
@@ -31,43 +35,66 @@ export const square = async (req: Request, res: Response) => {
     const alphaCo = 1 - (1 - 2 * areaCo) ** 0.5;
     const alphaMaxCo = 267.75 / (630 + fy);
 
-    let gamaCo = 1 - 0.5 * alphaCo;
-    let reinforcementArea = m / (0.9 * gamaCo * depth * fy);
+    let gamaCo, reinforcementArea, compReinforcementArea;
 
-    if (alphaCo > alphaMaxCo) {
-      gamaCo = 1 - 0.5 * alphaMaxCo;
+    if (alphaCo < alphaMaxCo) {
+      gamaCo = 1 - 0.5 * alphaCo;
+      reinforcementArea = m / (0.9 * gamaCo * depth * fy);
+    } else {
       const yMax = depth * alphaMaxCo;
       const areaMaxCo = alphaMaxCo * (1 - 0.5 * alphaMaxCo);
       const mMax = 0.9 * 0.85 * fc * areaMaxCo * b * depth ** 2;
       const mComp = m - mMax;
       const fs = Math.min((630 * (yMax - 0.85 * a)) / yMax, fy);
-      const compReinforcementArea = mComp / (0.9 * fs * (depth - a));
+      compReinforcementArea = mComp / (0.9 * fs * (depth - a));
+
+      gamaCo = 1 - 0.5 * alphaMaxCo;
       reinforcementArea =
         mMax / (0.9 * gamaCo * depth * fy) + (compReinforcementArea * fs) / fy;
     }
 
+    // Compare reinforcement area with minimum value
     const minReinforcementArea = (0.9 / fy) * b * depth;
-
     reinforcementArea = Math.max(reinforcementArea, minReinforcementArea);
 
+    // Compare reinforcement area with maximum value
     const maxReinforcementArea =
       0.75 * (455 / (630 + fy)) * (fc / fy) * b * depth;
-
     if (reinforcementArea > maxReinforcementArea) {
       return res.status(400).json({ error: "Invalid section" }).end();
     }
 
-    const barsCount = Math.max(
-      Math.ceil(reinforcementArea / (Math.PI * (d / 2) ** 2)),
+    // Calculate bars number and area for tension reinforcement
+    const bottomBarsCount = Math.max(
+      Math.ceil(reinforcementArea / (Math.PI * (diameter / 2) ** 2)),
       2
     );
+    const bottomBarsArea = bottomBarsCount * (Math.PI * (diameter / 2) ** 2);
 
-    const barsArea = barsCount * (Math.PI * (d / 2) ** 2);
+    // Calculate bars number and area for compression reinforcement
+    const topBarsCount = Math.max(
+      Math.ceil(compReinforcementArea / (Math.PI * (diameter / 2) ** 2)),
+      2
+    );
+    const topBarsArea = topBarsCount * (Math.PI * (diameter / 2) ** 2);
 
+    // Prepare response
     const result = {
-      area: reinforcementArea,
+      "Bottom Reinforcement": {
+        area: reinforcementArea,
+        ...(diameter && {
+          bars: { number: bottomBarsCount, diameter, area: bottomBarsArea },
+        }),
+      },
+      ...(compReinforcementArea && {
+        "Top Reinforcement": {
+          area: compReinforcementArea,
+          ...(diameter && {
+            bars: { number: topBarsCount, diameter, area: topBarsArea },
+          }),
+        },
+      }),
       unit: "mm2",
-      ...(d && { bars: { number: barsCount, diameter: d, area: barsArea } }),
     };
 
     return res
@@ -77,17 +104,21 @@ export const square = async (req: Request, res: Response) => {
         ...(draft
           ? {
               draft: {
-                a,
-                depth,
-                areaCo,
-                alphaCo,
-                alphaMaxCo,
-                gamaCo,
-                reinforcementArea,
-                barsCount,
-                barsArea,
-                minReinforcementArea,
-                maxReinforcementArea,
+                "Concrete Cover": a,
+                "Depth of Reinforcement": depth,
+                Coefficients: {
+                  Area: areaCo,
+                  Alpha: alphaCo,
+                  "Alpha Max": alphaMaxCo,
+                  Gama: gamaCo,
+                },
+                "Minimum Reinforcement Area": minReinforcementArea,
+                "Maximum Reinforcement Area": maxReinforcementArea,
+                "Bottom Reinforcement Area": reinforcementArea,
+                "Top Reinforcement Area": compReinforcementArea,
+                "Reinforcement Type": !compReinforcementArea
+                  ? "Tension"
+                  : "Tension + Compression",
               },
             }
           : {}),
